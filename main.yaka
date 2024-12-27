@@ -1,0 +1,102 @@
+directive apply_nativedefine
+
+# Standard libs
+import libs.c
+import libs.strings.refs as r
+import libs.strings.array as sarr
+import libs.console
+import libs.io
+import libs.os
+import libs.os.path as op
+import libs.fileformats.ini
+import libs.numbers as num
+import libs.perlin
+import libs.random
+# Raylib
+import raylib as rl
+import raylib.utils
+# Game engine libraries
+import engine.dialogs
+
+class State:
+    frames: int
+    total_frames: int
+    frame_caps: Array[rl.Image]
+
+SCREEN_WIDTH: Const[int] = 1920
+SCREEN_HEIGHT: Const[int] = 1080
+BALL_RADIUS: Const[int] = 50
+FPS: Const[int] = 60
+DURATION_SECONDS: Const[int] = 1
+
+
+def render(state: State) -> None:
+    rl.begin_drawing()
+    rl.clear_background(rl.color(100, 100, 255, 255))
+    # ----------------------------------------------------------------------------------
+    ball_x: int = (state.frames % (SCREEN_WIDTH / 10)) * 10
+    ball_y: int = SCREEN_HEIGHT / 2
+
+    rl.draw_circle(ball_x, ball_y, BALL_RADIUS, rl.color(255, 0, 0, 255))
+    # ----------------------------------------------------------------------------------
+    rl.end_drawing()
+    image = rl.load_image_from_screen()
+    arrput(state.frame_caps, image)
+
+def render_progress(f: int, total: int) -> None:
+    rl.begin_drawing()
+    rl.clear_background(rl.color(100, 100, 255, 255))
+    progress = (f * 100) / total
+    status = "Exporting frames: " + num.i2s(progress) + "%"
+    rl.draw_text(cast("c.CStr", status), 10, 10, 20, rl.color(255, 255, 255, 255))
+    rl.end_drawing()
+
+def render_ffmpeg() -> None:
+    rl.begin_drawing()
+    rl.clear_background(rl.color(100, 100, 255, 255))
+    rl.draw_text(cast("c.CStr", "Rendering video..."), 10, 10, 20, rl.color(255, 255, 255, 255))
+    rl.end_drawing()
+
+def padded_number(n: int, pad: int) -> str:
+    ns = num.i2s(n)
+    remain = pad - len(ns)
+    if remain <= 0:
+        return ns
+    result: str = ""
+    while remain > 0:
+        result += "0"
+        remain -= 1
+    result += ns
+    return result
+
+def create_filename(f: int) -> str:
+    return "frame_" + padded_number(f, 4) + ".png"
+
+def save_frame(state: State, n: int) -> None:
+    frame_path = op.join("frames", create_filename(n - 1))
+    image = state.frame_caps[n]
+    rl.export_image(image, cast("c.CStr", frame_path))
+
+def main() -> int:
+    s = State{frames: 0}
+    defer del s
+    rl.init_window(SCREEN_WIDTH, SCREEN_HEIGHT, c.cstr!{"Game"})
+    rl.set_target_fps(-1)
+    total_frames: int = FPS * DURATION_SECONDS
+    s.total_frames = total_frames
+    # first frame is ignored
+    while s.frames <= total_frames:
+        render(s)
+        s.frames += 1
+    for (i = 0; i < total_frames; i += 1):
+        save_frame(s, i + 1)
+        render_progress(i + 1, total_frames)
+    render_ffmpeg()
+    args = sarr.new(11, "ffmpeg", "-y", "-framerate", "60", "-i", "frames/frame_%04d.png", "-c:v", "libx264", "-pix_fmt", "yuv420p", "output.mp4")
+    result = os.run(args)
+    os.del_process_result(result)
+    sarr.del_str_array(args)
+
+    rl.close_window()
+    0
+
